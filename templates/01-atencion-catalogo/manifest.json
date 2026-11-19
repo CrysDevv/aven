@@ -1,0 +1,30 @@
+{
+  "id": "01-atencion-catalogo",
+  "name": "Atención al cliente + Catálogo",
+  "description": "Responde preguntas frecuentes y consulta el catálogo de productos del negocio.",
+  "variables": [
+    {
+      "key": "business_name",
+      "label": "Nombre del negocio",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "ai_tone",
+      "label": "Tono de la IA",
+      "type": "select",
+      "options": [
+        "Formal",
+        "Cercano",
+        "Divertido"
+      ],
+      "required": true
+    },
+    {
+      "key": "welcome_message",
+      "label": "Mensaje de bienvenida",
+      "type": "text",
+      "required": false
+    }
+  ]
+}

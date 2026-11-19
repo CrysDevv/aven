@@ -1,0 +1,25 @@
+{
+  "id": "04-faq-simple",
+  "name": "Preguntas Frecuentes",
+  "description": "Respuestas fijas a las preguntas más comunes del negocio, sin RAG.",
+  "variables": [
+    {
+      "key": "business_name",
+      "label": "Nombre del negocio",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "pregunta_1",
+      "label": "Pregunta frecuente 1",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "respuesta_1",
+      "label": "Respuesta a la pregunta 1",
+      "type": "text",
+      "required": false
+    }
+  ]
+}

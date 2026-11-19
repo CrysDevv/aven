@@ -1,0 +1,29 @@
+{
+  "id": "03-ventas-catalogo",
+  "name": "Ventas por Catálogo",
+  "description": "El cliente final navega el catálogo y realiza pedidos directo por WhatsApp.",
+  "variables": [
+    {
+      "key": "business_name",
+      "label": "Nombre del negocio",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "moneda",
+      "label": "Moneda",
+      "type": "select",
+      "options": [
+        "CLP",
+        "USD"
+      ],
+      "required": true
+    },
+    {
+      "key": "mensaje_bienvenida",
+      "label": "Mensaje de bienvenida",
+      "type": "text",
+      "required": false
+    }
+  ]
+}

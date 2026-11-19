@@ -1,0 +1,440 @@
+{
+  "name": "Aven - Buffer de Mensajes (compartido, multi-tenant)",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Recibir mensaje",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [-800, 400],
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "tenant_id" },
+            { "name": "customer_phone" },
+            { "name": "message" }
+          ]
+        }
+      },
+      "typeVersion": 1.1
+    },
+    {
+      "id": "config",
+      "name": "Config Parameters",
+      "type": "n8n-nodes-base.set",
+      "position": [-560, 400],
+      "parameters": {
+        "options": {},
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "context_id", "type": "string", "value": "={{ $json.tenant_id }}:{{ $json.customer_phone }}" },
+            { "id": "a2", "name": "minWords", "type": "string", "value": "3" },
+            { "id": "a3", "name": "waitShort", "type": "string", "value": "12" },
+            { "id": "a4", "name": "waitLong", "type": "string", "value": "6" }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "wait_calc",
+      "name": "get wait seconds",
+      "type": "n8n-nodes-base.code",
+      "position": [-320, 400],
+      "parameters": {
+        "jsCode": "const msg = $json.message || '';\nconst wordCount = msg.split(/\\s+/).filter(w => w).length;\nconst { minWords, waitLong, waitShort } = items[0].json;\nconst waitSeconds = wordCount < Number(minWords) ? Number(waitShort) : Number(waitLong);\nreturn [{ json: { ...items[0].json, waitSeconds } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "buffer_push",
+      "name": "Buffer messages",
+      "type": "n8n-nodes-base.redis",
+      "position": [-80, 400],
+      "parameters": {
+        "list": "=buffer_in:{{ $json.context_id }}",
+        "operation": "push",
+        "messageData": "={{ JSON.stringify({ message: $json.message, timestamp: $now }) }}"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "set_last_seen",
+      "name": "Set last_seen",
+      "type": "n8n-nodes-base.redis",
+      "position": [160, 400],
+      "parameters": {
+        "key": "=last_seen:{{ $('get wait seconds').item.json.context_id }}",
+        "ttl": "={{ $('get wait seconds').item.json.waitSeconds + 60 }}",
+        "value": "={{ $now.toMillis() }}",
+        "expire": true,
+        "operation": "set"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "incr_count",
+      "name": "Set buffer_count increment",
+      "type": "n8n-nodes-base.redis",
+      "position": [400, 400],
+      "parameters": {
+        "key": "=buffer_count:{{ $('get wait seconds').item.json.context_id }}",
+        "ttl": "={{ $('get wait seconds').item.json.waitSeconds + 60 }}",
+        "expire": true,
+        "operation": "incr"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "claim_waiting",
+      "name": "Claim waiting_reply (INCR atomico)",
+      "type": "n8n-nodes-base.redis",
+      "position": [640, 400],
+      "parameters": {
+        "key": "=waiting_reply:{{ $('get wait seconds').item.json.context_id }}",
+        "ttl": "={{ $('get wait seconds').item.json.waitSeconds + 60 }}",
+        "expire": true,
+        "operation": "incr"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "mod_input",
+      "name": "Mod input",
+      "type": "n8n-nodes-base.set",
+      "position": [880, 400],
+      "parameters": {
+        "options": {},
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            { "id": "b1", "name": "waiting_reply", "type": "boolean", "value": "={{ Number(Object.values($json)[0]) > 1 }}" },
+            { "id": "b2", "name": "context_id", "type": "string", "value": "={{ $('get wait seconds').item.json.context_id }}" },
+            { "id": "b3", "name": "waitSeconds", "type": "number", "value": "={{ $('get wait seconds').item.json.waitSeconds }}" }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "if_waiting",
+      "name": "waiting_reply?",
+      "type": "n8n-nodes-base.if",
+      "position": [1120, 400],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true },
+              "leftValue": "={{ $json.waiting_reply }}",
+              "rightValue": ""
+            }
+          ]
+        }
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "noop_already_waiting",
+      "name": "Ya hay ejecucion esperando",
+      "type": "n8n-nodes-base.noOp",
+      "position": [1360, 300],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "early_exit",
+      "name": "Salida sin consolidar",
+      "type": "n8n-nodes-base.set",
+      "position": [1600, 300],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            { "id": "d1", "name": "status", "type": "string", "value": "buffered" },
+            { "id": "d2", "name": "message", "type": "string", "value": "" }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "wait_node",
+      "name": "WaitSeconds",
+      "type": "n8n-nodes-base.wait",
+      "position": [1360, 520],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $json.waitSeconds }}",
+        "unit": "seconds"
+      },
+      "typeVersion": 1.1
+    },
+    {
+      "id": "get_last_seen2",
+      "name": "Get last_seen",
+      "type": "n8n-nodes-base.redis",
+      "position": [1600, 520],
+      "parameters": {
+        "key": "=last_seen:{{ $('Mod input').item.json.context_id }}",
+        "options": {},
+        "operation": "get",
+        "keyType": "string",
+        "propertyName": "last_seen"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "get_count2",
+      "name": "Get buffer_count",
+      "type": "n8n-nodes-base.redis",
+      "position": [1840, 520],
+      "parameters": {
+        "key": "=buffer_count:{{ $('Mod input').item.json.context_id }}",
+        "options": {},
+        "operation": "get",
+        "keyType": "string",
+        "propertyName": "count"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "check_ready",
+      "name": "Check Inactivity + Count",
+      "type": "n8n-nodes-base.if",
+      "position": [2080, 520],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "e1",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true },
+              "leftValue": "={{ $json.count != null && Number($json.count) >= 3 }}",
+              "rightValue": ""
+            },
+            {
+              "id": "e2",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true },
+              "leftValue": "={{ ($now.toMillis() - $json.last_seen) >= $('Mod input').item.json.waitSeconds * 1000 }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "looseTypeValidation": true
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "noop_not_ready",
+      "name": "Aun no listo",
+      "type": "n8n-nodes-base.noOp",
+      "position": [2320, 640],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "short_wait",
+      "name": "Esperar un poco mas",
+      "type": "n8n-nodes-base.wait",
+      "position": [2560, 640],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "typeVersion": 1.1
+    },
+    {
+      "id": "get_buffer",
+      "name": "Get buffer",
+      "type": "n8n-nodes-base.redis",
+      "position": [2320, 440],
+      "parameters": {
+        "key": "=buffer_in:{{ $('Mod input').item.json.context_id }}",
+        "options": {},
+        "operation": "get",
+        "keyType": "list",
+        "propertyName": "buffer"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "consolidate",
+      "name": "consolidate buffer",
+      "type": "n8n-nodes-base.code",
+      "position": [2560, 440],
+      "parameters": {
+        "jsCode": "const j = items[0].json;\nconst raw = Array.isArray(j.buffer) ? j.buffer : [];\nconst parsed = raw.map(x => {\n  try { return typeof x === 'string' ? JSON.parse(x) : x; } catch { return null; }\n}).filter(Boolean).filter(o => o.timestamp && typeof o.message === 'string');\nparsed.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));\nconst unique = [...new Set(parsed.map(m => m.message.trim()))];\nreturn [{ json: {\n  status: 'consolidated',\n  context_id: $('Mod input').item.json.context_id,\n  message: unique.join(' '),\n} }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "cleanup_buffer",
+      "name": "Delete buffer_in",
+      "type": "n8n-nodes-base.redis",
+      "position": [2800, 360],
+      "parameters": {
+        "key": "=buffer_in:{{ $('Mod input').item.json.context_id }}",
+        "operation": "delete"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "cleanup_count",
+      "name": "Delete buffer_count",
+      "type": "n8n-nodes-base.redis",
+      "position": [2800, 440],
+      "parameters": {
+        "key": "=buffer_count:{{ $('Mod input').item.json.context_id }}",
+        "operation": "delete"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "cleanup_waiting",
+      "name": "Delete waiting_reply",
+      "type": "n8n-nodes-base.redis",
+      "position": [2800, 520],
+      "parameters": {
+        "key": "=waiting_reply:{{ $('Mod input').item.json.context_id }}",
+        "operation": "delete"
+      },
+      "credentials": {
+        "redis": { "id": "credential-id", "name": "Aven Redis" }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "final_output",
+      "name": "Resultado final",
+      "type": "n8n-nodes-base.noOp",
+      "position": [3040, 440],
+      "parameters": {},
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Recibir mensaje": {
+      "main": [[{ "node": "Config Parameters", "type": "main", "index": 0 }]]
+    },
+    "Config Parameters": {
+      "main": [[{ "node": "get wait seconds", "type": "main", "index": 0 }]]
+    },
+    "get wait seconds": {
+      "main": [[{ "node": "Buffer messages", "type": "main", "index": 0 }]]
+    },
+    "Buffer messages": {
+      "main": [[{ "node": "Set last_seen", "type": "main", "index": 0 }]]
+    },
+    "Set last_seen": {
+      "main": [[{ "node": "Set buffer_count increment", "type": "main", "index": 0 }]]
+    },
+    "Set buffer_count increment": {
+      "main": [[{ "node": "Claim waiting_reply (INCR atomico)", "type": "main", "index": 0 }]]
+    },
+    "Claim waiting_reply (INCR atomico)": {
+      "main": [[{ "node": "Mod input", "type": "main", "index": 0 }]]
+    },
+    "Mod input": {
+      "main": [[{ "node": "waiting_reply?", "type": "main", "index": 0 }]]
+    },
+    "waiting_reply?": {
+      "main": [
+        [{ "node": "Ya hay ejecucion esperando", "type": "main", "index": 0 }],
+        [{ "node": "WaitSeconds", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ya hay ejecucion esperando": {
+      "main": [[{ "node": "Salida sin consolidar", "type": "main", "index": 0 }]]
+    },
+    "WaitSeconds": {
+      "main": [[{ "node": "Get last_seen", "type": "main", "index": 0 }]]
+    },
+    "Get last_seen": {
+      "main": [[{ "node": "Get buffer_count", "type": "main", "index": 0 }]]
+    },
+    "Get buffer_count": {
+      "main": [[{ "node": "Check Inactivity + Count", "type": "main", "index": 0 }]]
+    },
+    "Check Inactivity + Count": {
+      "main": [
+        [{ "node": "Get buffer", "type": "main", "index": 0 }],
+        [{ "node": "Aun no listo", "type": "main", "index": 0 }]
+      ]
+    },
+    "Aun no listo": {
+      "main": [[{ "node": "Esperar un poco mas", "type": "main", "index": 0 }]]
+    },
+    "Esperar un poco mas": {
+      "main": [[{ "node": "Get last_seen", "type": "main", "index": 0 }]]
+    },
+    "Get buffer": {
+      "main": [[{ "node": "consolidate buffer", "type": "main", "index": 0 }]]
+    },
+    "consolidate buffer": {
+      "main": [[
+        { "node": "Delete buffer_in", "type": "main", "index": 0 },
+        { "node": "Delete buffer_count", "type": "main", "index": 0 },
+        { "node": "Delete waiting_reply", "type": "main", "index": 0 }
+      ]]
+    },
+    "Delete buffer_in": {
+      "main": [[{ "node": "Resultado final", "type": "main", "index": 0 }]]
+    },
+    "Delete buffer_count": {
+      "main": [[{ "node": "Resultado final", "type": "main", "index": 0 }]]
+    },
+    "Delete waiting_reply": {
+      "main": [[{ "node": "Resultado final", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

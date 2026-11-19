@@ -1,0 +1,38 @@
+# Se aplica solo si se invoca explícitamente con -f (ver instrucciones).
+# Agrega Caddy (HTTPS automático) y NO publica el puerto 8000 directo al host.
+services:
+  app:
+    environment:
+      AVEN_ENV: production   # apaga /api/dev/* y restringe CORS — ver app/main.py
+    restart: always
+
+  redis:
+    restart: always
+
+  n8n:
+    restart: always
+
+  n8n-runner:
+    restart: always
+
+  rq-worker:
+    environment:
+      AVEN_ENV: production
+    restart: always
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: always
+
+volumes:
+  caddy_data:
+  caddy_config:

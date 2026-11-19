@@ -1,0 +1,12 @@
+{
+  "id": "06-motor-taller",
+  "name": "Motor & Taller — Repuestos y Agendamiento",
+  "description": "Vende repuestos consultando stock/precio en tiempo real, resuelve dudas técnicas con manuales en PDF, y agenda instalaciones en el taller.",
+  "variables": [
+    {"key": "business_name", "label": "Nombre del taller", "type": "text", "required": true},
+    {"key": "ai_tone", "label": "Tono de la IA", "type": "select", "options": ["Formal", "Cercano", "Técnico"], "required": true},
+    {"key": "taller_direccion", "label": "Dirección del taller", "type": "text", "required": true},
+    {"key": "horario_taller", "label": "Horario de atención", "type": "text", "required": true},
+    {"key": "calendar_id", "label": "ID del Google Calendar del taller (ej. el correo de la cuenta)", "type": "text", "required": true}
+  ]
+}

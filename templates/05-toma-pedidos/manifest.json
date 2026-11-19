@@ -1,0 +1,25 @@
+{
+  "id": "05-toma-pedidos",
+  "name": "Toma de Pedidos / Delivery",
+  "description": "Recibe pedidos de delivery, confirma zona de despacho y tiempo estimado.",
+  "variables": [
+    {
+      "key": "business_name",
+      "label": "Nombre del negocio",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "zona_despacho",
+      "label": "Zona de despacho",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "tiempo_entrega",
+      "label": "Tiempo de entrega estimado",
+      "type": "text",
+      "required": false
+    }
+  ]
+}

@@ -1,0 +1,337 @@
+{
+  "name": "Motor & Taller — Repuestos y Agendamiento",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Webhook entrante",
+      "type": "n8n-nodes-base.webhook",
+      "position": [-1200, 300],
+      "webhookId": "motor-taller-placeholder",
+      "parameters": {
+        "path": "PLACEHOLDER-SE-SOBREESCRIBE-AL-DESPLEGAR",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "call_buffer",
+      "name": "Consolidar mensajes (buffer)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "position": [-960, 300],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "{{buffer_workflow_id}}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tenant_id": "={{ $json.body.tenant_id }}",
+            "customer_phone": "={{ $json.body.customer_phone }}",
+            "message": "={{ $json.body.message }}"
+          }
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "if_ready",
+      "name": "Mensaje consolidado?",
+      "type": "n8n-nodes-base.if",
+      "position": [-720, 300],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "f1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "consolidated"
+            }
+          ]
+        }
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "noop_buffering",
+      "name": "Aun consolidando, no responder",
+      "type": "n8n-nodes-base.noOp",
+      "position": [-480, 460],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "ai_agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [-200, 140],
+      "parameters": {
+        "text": "={{ $('Consolidar mensajes (buffer)').item.json.message }}",
+        "options": {
+          "systemMessage": "Eres el asistente virtual de {{business_name}}, un taller mecanico y tienda de repuestos.\nTono: {{ai_tone}}.\nDireccion del taller: {{taller_direccion}}. Horario: {{horario_taller}}.\n\nHERRAMIENTAS DISPONIBLES Y CUANDO USARLAS:\n\n1. Consultar Inventario -- USA ESTA para CUALQUIER pregunta sobre repuestos (precio, stock, modelo compatible). Nunca inventes precios ni stock -- siempre usa el resultado exacto de esta herramienta.\n\n2. Buscar en Manuales Tecnicos -- USA ESTA para preguntas tecnicas complejas (garantias, compatibilidad detallada, especificaciones) que no se resuelven solo con el inventario.\n\n3. Consultar Disponibilidad Taller -- USA ESTA cuando el cliente quiera agendar una instalacion, para ofrecerle horarios reales disponibles.\n\n4. Agendar Instalacion -- USA ESTA SOLO despues de que el cliente confirme explicitamente un horario especifico de los que le ofreciste.\n\nReglas: se breve y natural (2-4 frases), nunca prometas un precio o stock sin haber consultado la herramienta primero, y si no encuentras el repuesto exacto ofrece alternativas en vez de decir simplemente que no hay.\n\nIMPORTANTE sobre agendamiento: si las herramientas de calendario devuelven un error de autorizacion (401), significa que este negocio todavia no conecto su Google Calendar -- en ese caso, dile al cliente que tomas nota de su interes y que el taller lo contactara para coordinar la instalacion, en vez de insistir con la herramienta o inventar un horario."
+        },
+        "promptType": "define"
+      },
+      "retryOnFail": false,
+      "typeVersion": 2
+    },
+    {
+      "id": "openai_model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "position": [-320, 380],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "credential-id",
+          "name": "Aven OpenAI"
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "memory",
+      "name": "Memoria (Redis)",
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "position": [-160, 380],
+      "parameters": {
+        "sessionKey": "={{ $('Consolidar mensajes (buffer)').item.json.context_id }}",
+        "sessionIdType": "customKey"
+      },
+      "credentials": {
+        "redis": {
+          "id": "credential-id",
+          "name": "Aven Redis"
+        }
+      },
+      "typeVersion": 1.4
+    },
+    {
+      "id": "postgres_inventory",
+      "name": "Consultar Inventario",
+      "type": "n8n-nodes-base.postgresTool",
+      "position": [0, 380],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT sku, name, price, stock_quantity, image_url, description FROM catalog_items WHERE tenant_id = '{{tenant_id}}' AND item_type = 'product' AND is_active = true AND (name ILIKE '%' || $1::text || '%' OR sku ILIKE $1::text) LIMIT 5;",
+        "options": {
+          "queryReplacement": "={{ $fromAI('search_term', 'Termino de busqueda del repuesto, ej: pastillas de freno') }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "credential-id",
+          "name": "Aven Supabase Postgres"
+        }
+      },
+      "typeVersion": 2.5
+    },
+    {
+      "id": "vector_store",
+      "name": "Buscar en Manuales Tecnicos",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "position": [160, 380],
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "buscar_manuales_tecnicos",
+        "toolDescription": "Busca informacion tecnica detallada en los manuales del fabricante (garantias, compatibilidad, especificaciones).",
+        "tableName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "knowledge_vectors"
+        },
+        "options": {
+          "queryName": "match_documents",
+          "filter": "{\"tenant_id\": \"{{tenant_id}}\"}"
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "credential-id",
+          "name": "Aven Supabase"
+        }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "embeddings",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "position": [160, 540],
+      "parameters": {
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "credential-id",
+          "name": "Aven OpenAI"
+        }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "calendar_check",
+      "name": "Consultar Disponibilidad Taller",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "position": [320, 380],
+      "parameters": {
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{calendar_id}}/events",
+        "method": "GET",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "timeMin",
+              "value": "={{ $fromAI('time_min', 'Fecha/hora ISO 8601 desde donde buscar disponibilidad') }}"
+            },
+            {
+              "name": "timeMax",
+              "value": "={{ $fromAI('time_max', 'Fecha/hora ISO 8601 hasta donde buscar disponibilidad') }}"
+            },
+            {
+              "name": "singleEvents",
+              "value": "true"
+            },
+            {
+              "name": "orderBy",
+              "value": "startTime"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Webhook entrante').item.json.body.google_calendar_access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "calendar_book",
+      "name": "Agendar Instalacion",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "position": [480, 380],
+      "parameters": {
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{calendar_id}}/events",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Webhook entrante').item.json.body.google_calendar_access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\"summary\": \"Instalacion\", \"start\": {\"dateTime\": \"{{ $fromAI('start_datetime', 'Fecha y hora de inicio en formato ISO 8601, confirmada por el cliente, ej: 2026-09-15T14:00:00-04:00') }}\"}, \"end\": {\"dateTime\": \"{{ $fromAI('end_datetime', 'Fecha y hora de termino en formato ISO 8601, normalmente 1 hora despues del inicio') }}\"}}",
+        "options": {}
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "send_whatsapp",
+      "name": "Enviar respuesta",
+      "type": "n8n-nodes-base.whatsApp",
+      "position": [40, 140],
+      "webhookId": "motor-taller-send-placeholder",
+      "parameters": {
+        "textBody": "={{ $json.output }}",
+        "operation": "send",
+        "phoneNumberId": "{{phone_number_id}}",
+        "additionalFields": {},
+        "recipientPhoneNumber": "={{ $('Webhook entrante').item.json.body.customer_phone }}"
+      },
+      "credentials": {
+        "whatsAppApi": {
+          "id": "credential-id",
+          "name": "Aven WhatsApp"
+        }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "respond_webhook",
+      "name": "Responder al worker",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [-480, 300],
+      "parameters": {},
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Webhook entrante": {
+      "main": [[{ "node": "Consolidar mensajes (buffer)", "type": "main", "index": 0 }]]
+    },
+    "Consolidar mensajes (buffer)": {
+      "main": [[{ "node": "Mensaje consolidado?", "type": "main", "index": 0 }]]
+    },
+    "Mensaje consolidado?": {
+      "main": [
+        [{ "node": "AI Agent", "type": "main", "index": 0 }],
+        [{ "node": "Aun consolidando, no responder", "type": "main", "index": 0 }]
+      ]
+    },
+    "Aun consolidando, no responder": {
+      "main": [[{ "node": "Responder al worker", "type": "main", "index": 0 }]]
+    },
+    "AI Agent": {
+      "main": [[{ "node": "Enviar respuesta", "type": "main", "index": 0 }]]
+    },
+    "Enviar respuesta": {
+      "main": [[{ "node": "Responder al worker", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Memoria (Redis)": {
+      "ai_memory": [[{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]]
+    },
+    "Consultar Inventario": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "Buscar en Manuales Tecnicos": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [[{ "node": "Buscar en Manuales Tecnicos", "type": "ai_embedding", "index": 0 }]]
+    },
+    "Consultar Disponibilidad Taller": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "Agendar Instalacion": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

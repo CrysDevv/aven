@@ -1,0 +1,93 @@
+# Base — común a desarrollo y producción. No expone puertos por sí sola;
+# eso lo decide docker-compose.override.yml (dev) o docker-compose.prod.yml (prod).
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:2.34.1   # version fija, no ":latest" -- ver Anexo de Seguridad
+    environment:
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      N8N_SSRF_PROTECTION_ENABLED: "true"
+      NODES_EXCLUDE: '["n8n-nodes-base.executeCommand","n8n-nodes-base.readWriteFile"]'
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Falta N8N_ENCRYPTION_KEY en .env — ver .env.example}
+      # Task Runners externos: el nodo Code (JS/Python) NUNCA ejecuta
+      # dentro del proceso principal de n8n -- corre en el contenedor
+      # "n8n-runner" de abajo, sin acceso a la base de datos ni a la
+      # llave de encriptación. Ver Anexo de Seguridad, sección 7.7.
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_RUNNERS_MODE: "external"
+      N8N_RUNNERS_BROKER_LISTEN_ADDRESS: "0.0.0.0"
+      N8N_RUNNERS_BROKER_PORT: "5679"
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN:?Falta N8N_RUNNERS_AUTH_TOKEN en .env — ver .env.example}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  n8n-runner:
+    image: n8nio/runners:2.34.1   # DEBE coincidir con la version de n8nio/n8n de arriba
+    environment:
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN:?Falta N8N_RUNNERS_AUTH_TOKEN en .env — ver .env.example}
+      N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
+      # No se definen N8N_RUNNERS_STDLIB_ALLOW / EXTERNAL_ALLOW a proposito:
+      # se deja el default restrictivo de n8n, NO el "*" permisivo que
+      # aparece en varios tutoriales -- eso anularia el proposito del
+      # aislamiento.
+    depends_on:
+      - n8n
+    restart: unless-stopped
+
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis        # hostname de red del servicio, nunca "localhost" entre contenedores
+      N8N_URL: http://n8n:5678
+    volumes:
+      # Montado como volumen (no copiado en el Dockerfile) a propósito:
+      # así puedes agregar/editar plantillas sin reconstruir la imagen.
+      # Solo lectura porque la app nunca escribe en esta carpeta.
+      - ./templates:/app/templates:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    restart: unless-stopped
+
+  rq-worker:
+    build: .                   # misma imagen que "app" — solo cambia el comando
+    volumes:
+      - ./templates:/app/templates:ro
+    command: ["rq", "worker", "incoming_messages", "--url", "redis://redis:6379"]
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      N8N_URL: http://n8n:5678
+    depends_on:
+      redis:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  n8n_data:

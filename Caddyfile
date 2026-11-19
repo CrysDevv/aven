@@ -1,0 +1,7 @@
+# Reemplaza "tu-dominio.cl" por tu dominio o subdominio real antes de subir a Oracle.
+# Caddy obtiene y renueva el certificado HTTPS automáticamente (Let's Encrypt) —
+# no hay que tocar certbot ni nginx a mano.
+
+tu-dominio.cl {
+    reverse_proxy app:8000
+}

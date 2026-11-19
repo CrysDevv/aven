@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Aven — Panel de Pruebas API</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Aven — Panel de Pruebas de API</h1>
+    <p class="subtitle">Entorno de depuración Fase 1. No usar en producción.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1. Salud del servidor</h2>
+      <button onclick="checkHealth()">Probar /api/health</button>
+      <pre id="health-output">—</pre>
+    </section>
+
+    <section class="card">
+      <h2>2. Simular mensaje entrante de WhatsApp</h2>
+      <p class="hint">Arma un payload realista, lo firma con HMAC (como haría Meta) y lo envía al webhook real. El <code>phone_number_id</code> debe coincidir con el de un tenant real para que se resuelva y encole — genera uno en la sección 3 y usa "Usar el último tenant generado".</p>
+      <label>Teléfono del cliente
+        <input type="text" id="phone" value="+56912345678">
+      </label>
+      <label>Mensaje
+        <input type="text" id="message" value="Hola, ¿tienen disponible el producto X?">
+      </label>
+      <label>phone_number_id (del negocio que recibe)
+        <input type="text" id="phone-number-id" value="dev-phone-id">
+      </label>
+      <button onclick="simulateWebhook()">Enviar webhook simulado</button>
+      <button onclick="useLastTenantPhoneNumberId()" style="background:#2a2e37;">Usar el último tenant generado</button>
+      <p id="last-tenant-info" class="hint">—</p>
+      <pre id="webhook-output">—</pre>
+    </section>
+
+    <section class="card">
+      <h2>3. Aislamiento por tenant (JWT)</h2>
+      <p class="hint">Genera un JWT de prueba y llama a un endpoint protegido para confirmar que el tenant_id se resuelve del token, no del cliente.</p>
+      <button onclick="generateAndTest()">Generar JWT y probar endpoint protegido</button>
+      <pre id="jwt-output">—</pre>
+    </section>
+
+    <section class="card">
+      <h2>4. Plantillas de n8n</h2>
+      <p class="hint">Genera primero un tenant de prueba (botón de arriba), luego selecciona una plantilla, configúrala, y despliégala en tu instancia real de n8n.</p>
+      <div id="templates-gallery">Cargando plantillas...</div>
+      <div id="template-config" style="display:none; margin-top: 1rem;">
+        <h3 id="template-config-title"></h3>
+        <p id="template-config-desc" class="hint"></p>
+        <form id="template-config-form"></form>
+        <button onclick="deployTemplate()">Desplegar en n8n</button>
+      </div>
+      <pre id="deploy-output">—</pre>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Se aplica AUTOMÁTICAMENTE solo con `docker compose up` (sin -f explícito).
+# En Oracle vas a usar -f explícito y este archivo se ignora solo.
+services:
+  app:
+    environment:
+      AVEN_ENV: dev
+    ports:
+      - "8000:8000"
+
+  n8n:
+    ports:
+      - "5678:5678"   # UI de n8n — solo para dev local, nunca expuesto directo en producción
+    environment:
+      # Sin esto, n8n rechaza el login por cookie insegura cuando accedes
+      # por http://localhost en dev. En producción NO se define esta
+      # variable (queda en su default "true"), porque Caddy sirve n8n
+      # detrás de HTTPS real — ver docker-compose.prod.yml.
+      N8N_SECURE_COOKIE: "false"

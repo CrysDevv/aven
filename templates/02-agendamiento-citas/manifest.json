@@ -1,0 +1,25 @@
+{
+  "id": "02-agendamiento-citas",
+  "name": "Agendamiento de Citas",
+  "description": "Permite a los clientes finales reservar horas disponibles por WhatsApp.",
+  "variables": [
+    {
+      "key": "business_name",
+      "label": "Nombre del negocio",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "horario_atencion",
+      "label": "Horario de atención",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "servicio_principal",
+      "label": "Servicio principal",
+      "type": "text",
+      "required": false
+    }
+  ]
+}

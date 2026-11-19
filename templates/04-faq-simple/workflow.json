@@ -1,0 +1,86 @@
+{
+  "name": "Preguntas Frecuentes",
+  "nodes": [
+    {
+      "id": "node-webhook",
+      "name": "Webhook entrante",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "path": "faq-simple",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "node-set",
+      "name": "Configurar Variables del Negocio",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "business_name",
+              "value": "{{business_name}}"
+            },
+            {
+              "name": "pregunta_1",
+              "value": "{{pregunta_1}}"
+            },
+            {
+              "name": "respuesta_1",
+              "value": "{{respuesta_1}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-respond",
+      "name": "Responder a WhatsApp",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Webhook entrante": {
+      "main": [
+        [
+          {
+            "node": "Configurar Variables del Negocio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar Variables del Negocio": {
+      "main": [
+        [
+          {
+            "node": "Responder a WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
